@@ -39,9 +39,19 @@ def prep_data(df,cols=None,neighbor=True):
     
     df['Stowaway']  = (df.AgeNULL*(df.CabinN==0)) == 1
 
+
+    def ticket_parse(ticket_str):
+        ticket = str(ticket_str).split()
+        if len(ticket) == 1:
+            return ['NA',ticket[0]]
+        else:
+            return ticket
+        
+    df['Ticket'] = df.Ticket.apply(lambda x: ticket_parse(x)[1])
+    df.Ticket = df.Ticket.convert_objects(convert_numeric=True)
     #roughly next (often same) door coupling - highly collinear
     
-    droplist= ['Name', 'Sex', 'Ticket','PassengerId']
+    droplist= ['Name', 'Sex','PassengerId']
     cat_to_dums = ['Embarked','Cabin','Family']
     #join on the original index by default!
     if neighbor:
@@ -123,7 +133,8 @@ test_data = test_df.values
 
 
 print 'Training...'
-forest = RandomForestClassifier(n_estimators=1000,n_jobs = -1,criterion='gini')
+forest = RandomForestClassifier(n_estimators=1000,n_jobs = -1,
+                                max_features='auto',criterion='gini')
 forest = forest.fit( train_data[0::,1::], train_data[0::,0] )
 print 'training set  . . ',forest.feature_importances_
 
