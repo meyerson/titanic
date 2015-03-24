@@ -8,6 +8,10 @@ from sklearn.ensemble import RandomForestClassifier
 train_df = pd.read_csv('train.csv', header=0)        # Load the train file into a dataframe
 test_df = pd.read_csv('test.csv', header=0)
 verify_df =  pd.read_csv('titanic.csv', header=0)
+train_names = train_df['Name'].values
+
+test_names = test_df['Name'].values
+ids = test_df['PassengerId'].values
 
 print train_df.shape, test_df.shape, verify_df.shape
 
@@ -54,48 +58,66 @@ def prep_data(df,cols=None,neighbor=True):
         from scipy.spatial.distance import pdist, squareform,cdist
         #compute a distance between 
         rsuffix='_next'
-        #what_matters = df.columns
-        #df[['Survived','CabinN']]
-        #df[df.Survived!='?']
-        #df[df.Survived=='?']
-        #dist = df[['CabinN','Pclass','Cabin']]
-        #pdist(aa)
-        #pdist(aa.Survived[:,None],'cityblock')
-        #df.groupby('Cabin')[["CabinN"]].apply(lambda g: pd.Series(pdist(g[:,None],'cityblock')))
-
-        #df.groupby('Cabin')[["CabinN"]].apply(lambda g: pd.Series(pdist(g)))
-        #df.groupby('Cabin')[["CabinN"]].apply(lambda g: pd.Series(pdist(g)))
-
+       
        
         import copy
+
         
         def look_for_dead(g):
+
+            new_cols = [x+'_'+y for x in ['near','far','mean'] for y in ['dead','live']]
+            
+            if len(g)==1:
+                for c in new_cols:
+                    g[c] = np.NaN
+              
+
+                return g
             
             a_live,a_die,a_test = g[g.Survived==1],g[g.Survived==0],g[g.Survived=='?']
 
             dist = cdist(g['CabinN'][:,None],a_die['CabinN'][:,None])
-            m_dist = np.ma.masked_array(dist,np.isnan(dist))
-            g['near_dead'] = m_dist.min(axis=1)
-            g['mean_dead'] = m_dist.mean(axis=1)
+            m_dist = np.ma.masked_array(dist,np.isnan(dist),fill_value=np.NaN)
+            
+            m_min = np.array(m_dist.min(axis=1))
+            m_max =  np.array(m_dist.max(axis=1))
+            m_mean = np.array(m_dist.mean(axis=1))
+            m_min[m_min== 1.00000000e+20] = np.NaN
+            m_max[m_max== 1.00000000e+20] = np.NaN
+            m_mean[m_mean== 0.] = np.NaN
+            
+            
+            g['near_dead'] =m_min
+            g['mean_dead'] = m_mean
+            g['far_dead'] = m_max
+
+            
           
             dist = cdist(g['CabinN'][:,None],a_live['CabinN'][:,None])
             m_dist = np.ma.masked_array(dist,np.isnan(dist))
+            
+            m_min = np.array(m_dist.min(axis=1))
+            m_max =  np.array(m_dist.max(axis=1))
+            m_mean = np.array(m_dist.mean(axis=1))
+            m_min[m_min== 1.00000000e+20] = np.NaN
+            m_mean[m_mean== 0.] = np.NaN
+            m_max[m_max== 1.00000000e+20] = np.NaN
+            
             g['mean_live'] =  m_dist.mean(axis=1)
             g['near_live'] = m_dist.min(axis=1)
+            g['far_live'] = m_max
 
             
+            return g
+
             
-    
-        #df['near_dead'],df['mean_dead'],df['near_live'],df['mean_live'] = df.groupby('Cabin').apply(look_for_dead)
-            
+        df = df.groupby('Cabin').apply(look_for_dead)    
+        
+        
+       
 
         df = df.join((df.sort('CabinN').groupby('Cabin').shift(1))[['Pclass','Family','Embarked','Survived']] ,rsuffix=rsuffix)
-        #df = df.join((df.sort('CabinN').groupby('Cabin').shift(1))[['Pclass','SibSp','Gender','Family','Age']] ,rsuffix=rsuffix)
-        
-        #df = df.join((df.sort('CabinN').groupby('Cabin').shift(1)),rsuffix=rsuffix)
-        
-        
-        
+       
         cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix,['Family','Embarked'])
         #droplist= droplist+ map(lambda x: x+rsuffix,droplist)
         
@@ -142,12 +164,17 @@ def prep_data(df,cols=None,neighbor=True):
 test_df['Survived'] = '?'
 all_df = train_df.append(test_df,ignore_index=True)
 all_df = prep_data(all_df)
-exit()
+
+train_df = all_df[all_df.Survived!='?']
+test_df = all_df[all_df.Survived=='?']
+print test_df.columns
+test_df = test_df.drop('Survived',axis=1)
+#exit()
 
 #######################
-train_names = train_df['Name'].values
+
 #train_df = train_df.drop(['Name', 'Sex', 'Ticket','PassengerId'], axis=1)
-train_df = prep_data(train_df)
+#train_df = prep_data(train_df)
 
 
 train_cols = (set(train_df.columns))
@@ -155,12 +182,11 @@ train_cols = (set(train_df.columns))
 
 #######################
 
-test_names = test_df['Name'].values
-ids = test_df['PassengerId'].values
 
-test_df['Survived'] = '?' #a.t.m this gets droped in prep_data
 
-test_df = prep_data(test_df,cols = train_cols) #any features NOT in train_cols get dropped
+#test_df['Survived'] = '?' #a.t.m this gets droped in prep_data
+
+#test_df = prep_data(test_df,cols = train_cols) #any features NOT in train_cols get dropped
 
 
 #test_names = test_df['Name'].values
