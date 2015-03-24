@@ -1,10 +1,3 @@
-""" Writing my first randomforest code.
-Author : AstroDave
-Date : 23rd September 2012
-Revised: 15 April 2014
-please see packages.python.org/milk/randomforests.html for more
-
-""" 
 import pandas as pd
 import numpy as np
 import csv as csv
@@ -45,20 +38,58 @@ def prep_data(df,cols=None,neighbor=True):
         if len(ticket) == 1:
             return ['NA',ticket[0]]
         else:
-            return ticket
+            #return ticket
+            return [ticket[0].replace(".", "").replace("A/","A"), ticket[-1]]
         
+    df['Ticket_pre'] = df.Ticket.apply(lambda x: ticket_parse(x)[0])   
     df['Ticket'] = df.Ticket.apply(lambda x: ticket_parse(x)[1])
-    df.Ticket = df.Ticket.convert_objects(convert_numeric=True)
+    
+    df.Ticket = df.Ticket.convert_objects(convert_numeric=True).fillna(0)
     #roughly next (often same) door coupling - highly collinear
     
     droplist= ['Name', 'Sex','PassengerId']
-    cat_to_dums = ['Embarked','Cabin','Family']
+    cat_to_dums = ['Embarked','Cabin','Family','Ticket_pre']
     #join on the original index by default!
     if neighbor:
+        from scipy.spatial.distance import pdist, squareform,cdist
+        #compute a distance between 
         rsuffix='_next'
         #what_matters = df.columns
+        #df[['Survived','CabinN']]
+        #df[df.Survived!='?']
+        #df[df.Survived=='?']
+        #dist = df[['CabinN','Pclass','Cabin']]
+        #pdist(aa)
+        #pdist(aa.Survived[:,None],'cityblock')
+        #df.groupby('Cabin')[["CabinN"]].apply(lambda g: pd.Series(pdist(g[:,None],'cityblock')))
+
+        #df.groupby('Cabin')[["CabinN"]].apply(lambda g: pd.Series(pdist(g)))
+        #df.groupby('Cabin')[["CabinN"]].apply(lambda g: pd.Series(pdist(g)))
+
+       
+        import copy
         
-        df = df.join((df.sort('CabinN').groupby('Cabin').shift(1))[['Pclass','Family','Embarked']] ,rsuffix=rsuffix)
+        def look_for_dead(g):
+            
+            a_live,a_die,a_test = g[g.Survived==1],g[g.Survived==0],g[g.Survived=='?']
+
+            dist = cdist(g['CabinN'][:,None],a_die['CabinN'][:,None])
+            m_dist = np.ma.masked_array(dist,np.isnan(dist))
+            g['near_dead'] = m_dist.min(axis=1)
+            g['mean_dead'] = m_dist.mean(axis=1)
+          
+            dist = cdist(g['CabinN'][:,None],a_live['CabinN'][:,None])
+            m_dist = np.ma.masked_array(dist,np.isnan(dist))
+            g['mean_live'] =  m_dist.mean(axis=1)
+            g['near_live'] = m_dist.min(axis=1)
+
+            
+            
+    
+        #df['near_dead'],df['mean_dead'],df['near_live'],df['mean_live'] = df.groupby('Cabin').apply(look_for_dead)
+            
+
+        df = df.join((df.sort('CabinN').groupby('Cabin').shift(1))[['Pclass','Family','Embarked','Survived']] ,rsuffix=rsuffix)
         #df = df.join((df.sort('CabinN').groupby('Cabin').shift(1))[['Pclass','SibSp','Gender','Family','Age']] ,rsuffix=rsuffix)
         
         #df = df.join((df.sort('CabinN').groupby('Cabin').shift(1)),rsuffix=rsuffix)
@@ -102,10 +133,16 @@ def prep_data(df,cols=None,neighbor=True):
                 
         for new_col in df.columns:
             if new_col not in cols:
-                df = df.drop(col)
+                
+                df = df.drop(new_col,axis = 1)
 
     print df.columns
     return df
+## create a join set
+test_df['Survived'] = '?'
+all_df = train_df.append(test_df,ignore_index=True)
+all_df = prep_data(all_df)
+exit()
 
 #######################
 train_names = train_df['Name'].values
@@ -114,13 +151,16 @@ train_df = prep_data(train_df)
 
 
 train_cols = (set(train_df.columns))
-train_cols.remove('Survived')
+#train_cols.remove('Survived')
 
 #######################
 
 test_names = test_df['Name'].values
 ids = test_df['PassengerId'].values
-test_df = prep_data(test_df,cols = train_cols)
+
+test_df['Survived'] = '?' #a.t.m this gets droped in prep_data
+
+test_df = prep_data(test_df,cols = train_cols) #any features NOT in train_cols get dropped
 
 
 #test_names = test_df['Name'].values
@@ -133,7 +173,7 @@ test_data = test_df.values
 
 
 print 'Training...'
-forest = RandomForestClassifier(n_estimators=1000,n_jobs = -1,
+forest = RandomForestClassifier(n_estimators=10000,n_jobs = -1,
                                 max_features='auto',criterion='gini')
 forest = forest.fit( train_data[0::,1::], train_data[0::,0] )
 print 'training set  . . ',forest.feature_importances_
