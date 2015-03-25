@@ -24,9 +24,10 @@ print train_df.shape, test_df.shape, verify_df.shape
 # I need to convert all strings to integer classifiers.
 # I need to fill in the missing values of the data and make it complete.
 
-reduce_w_svd = True
+reduce_w_svd = False
 rescale = False
-neighbor= False
+neighbor= True
+trim_ftrs = False
 
 
 def prep_data(df,cols=None,neighbor=True):
@@ -112,7 +113,7 @@ def prep_data(df,cols=None,neighbor=True):
             
             #g['near_dead'] =m_min
             g['mean_dead'] = m_mean
-            g['far_dead'] = m_max
+            #g['far_dead'] = m_max
 
             #dist = cdist(g['Pclass'][:,None],a_live['Pclass'][:,None])
             dist = cdist(g['CabinN'][:,None],a_live['CabinN'][:,None])
@@ -128,18 +129,47 @@ def prep_data(df,cols=None,neighbor=True):
             
             g['mean_live'] =  m_mean#.mean(axis=1)
             #g['near_live'] = m_min#.min(axis=1)
-            g['far_live'] = m_max
+            #g['far_live'] = m_max
 
             return g
 
         
-        df = df.groupby('Cabin').apply(look_for_dead)    
+        #df = df.groupby('Cabin').apply(look_for_dead)    
         
         
        
 
         #df = df.join((df.sort('CabinN').groupby('Cabin').shift(1))[['Pclass','Family','Embarked','Age','Survived']] ,rsuffix=rsuffix)
         #df = df.join((df.sort('CabinN').groupby('Cabin').shift(1))[['Survived']] ,rsuffix=rsuffix)
+
+        #df = df.join((df.sort('CabinN').groupby('Pclass').shift(1))[['Survived']] ,rsuffix='_class')
+
+        #df = df.join((df.sort(['CabinN','Pclass']).groupby('Gender').shift(1))[['Survived']] ,rsuffix='_age')
+        #df = df.join((df.sort('Pclass').groupby('Gender').shift(1))[['Survived']] ,rsuffix='_age')
+
+        for i in range(1,5):
+            print i
+        
+            #df = df.join((df.sort(['Pclass','CabinN']).groupby('Gender').shift(i))[['Family','Embarked','Age','Survived','SibSp']] ,rsuffix=rsuffix+str(i))
+            #df = df.join((df.sort(['Pclass','CabinN']).groupby('Gender').shift(i))['Survived'] ,rsuffix=rsuffix+str(i))
+            #df = df.join((df.sort('Pclass').groupby('Gender').shift(i))['Survived'] ,rsuffix=rsuffix+str(i))
+            
+            #df = df.join((df.sort(['Name','CabinN']').groupby(['Pclass','Cabin']).shift(i))[['SibSp','Family','Embarked','Age','Survived']] ,rsuffix=rsuffix+str(i))
+            #cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix+str(i),['SibSp','Family','Embarked','Survived'])
+
+            # df = df.join((df.sort('CabinN').groupby(['Pclass','Cabin']).shift(i))[['Survived']] ,rsuffix=rsuffix+str(i))
+            # cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix+str(i),['Survived'])
+
+            df = df.join((df.sort(['CabinN','Name']).groupby(['Pclass','Cabin']).shift(i))[['Survived']] ,rsuffix=rsuffix+str(i))
+            cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix+str(i),['Survived'])
+            
+            
+            #cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix+str(i),['SibSp','Family','Embarked','Survived'])
+            #df = df.join((df.sort('CabinN').groupby('Gender').shift(1))[['Survived']] ,rsuffix='_age')
+            #cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix+str(i),['Survived'])
+        
+        
+        #cat_to_dums =cat_to_dums + ['Survived_next','Survived_age']
 
         #cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix,['Survived'])
         #cat_to_dums =cat_to_dums + map(lambda x: x+rsuffix,['Family','Embarked','Survived'])
@@ -204,13 +234,13 @@ train_df_nos = train_df.drop('Survived',axis=1)
 
 if rescale:
     scaler = pp.StandardScaler().fit(all_df.drop('Survived',axis=1))
-    train_df_nos = scaler.transform(train_df_nos)
-    test_df = pd.DataFrame(scaler.transform(test_df))
+    train_df_nos = pd.DataFrame(scaler.transform(train_df_nos),columns = train_df_nos.columns)
+    test_df = pd.DataFrame(scaler.transform(test_df),columns = test_df.columns)
 
 #print train_df_nos
 
 if reduce_w_svd:
-    svd_model = decompose.TruncatedSVD(n_components=20)
+    svd_model = decompose.TruncatedSVD(n_components=35)
 
     svd_model.fit(train_df_nos)
     train_df_svd = svd_model.transform(train_df_nos)
@@ -237,7 +267,7 @@ print 'Training...'
 clf = DecisionTreeClassifier(max_depth=None, min_samples_split=1,splitter='random')
 
 #clf = AdaBoostClassifier(n_estimators=1000)
-forest = RandomForestClassifier(n_estimators=1000,n_jobs = -1,criterion='gini',max_features='sqrt')
+forest = RandomForestClassifier(n_estimators=10,n_jobs = -1,criterion='gini',max_features='sqrt')
 
 forest =  forest.fit(train_df_nos,train_df.Survived.values)
 
@@ -248,14 +278,16 @@ sorted_idx = sorted_idx[::-1]
 print sorted_idx[0:10]
 print features[sorted_idx[:-5]]
 
-#X_r = (train_df.drop('Survived',axis=1))[features[sorted_idx[0:25]]]
+X = train_df_nos
+if trim_ftrs:
+    X = (train_df.drop('Survived',axis=1))[features[sorted_idx[:-25]]]
+    test_data = test_df[features[sorted_idx[:-25]]].values
 
-
-forest = RandomForestClassifier(n_estimators=10000,n_jobs = -1,criterion='gini')#,max_features='sqrt')
+forest = RandomForestClassifier(n_estimators=1000,n_jobs = -1,criterion='gini',max_features='sqrt')
 #forest = ExtraTreesClassifier(n_estimators=2000, max_depth=None)#,max_features=10)
-forest =  forest.fit(train_df_nos,train_df.Survived.values)
-#test_data = test_df[features[sorted_idx[0:25]]].values
-#test_data = test_df
+#
+forest =  forest.fit(X,train_df.Survived.values)
+
 
 print 'Predicting...'
 output = forest.predict(test_data).astype(int)
